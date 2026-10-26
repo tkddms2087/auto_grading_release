@@ -2,6 +2,8 @@ import os
 import json
 import subprocess
 
+from functions import get_answer_files
+
 
 class ReportPrint:
     def __init__(self, s_id: int, 
@@ -123,10 +125,22 @@ class ReportPrint:
 
     
     def __print_output_diff_result(self, prob_name, case_num):
-        
-        with open(f"./grading_cases/{self.hw_name}_{prob_name}_case_{case_num}_answer.txt", "r") as f: 
-            output_answer = f.read()
-        write_str = f"\n### problem-{prob_name}-case-{case_num} output answer\n```\n{output_answer}\n```\n"
+        answer_files = get_answer_files(self.hw_name, prob_name, case_num)
+        write_str = ""
+        flexible_destructor_marker = (
+            f"./grading_cases/{self.hw_name}_{prob_name}_case_{case_num}"
+            "_allow_all_destructor_orders"
+        )
+        if os.path.isfile(flexible_destructor_marker):
+            write_str += ("\n> All six relative orders of the OrderProcessing, Tables, "
+                          "and CoffeeShop destructor groups are accepted. The internal "
+                          "reverse order of the Table array is still required.\n")
+        for answer_index, answer_file in enumerate(answer_files, start=1):
+            with open(answer_file, "r") as f:
+                output_answer = f.read()
+            answer_label = "output answer" if len(answer_files) == 1 else f"accepted output answer {answer_index}"
+            write_str += (f"\n### problem-{prob_name}-case-{case_num} {answer_label}"
+                          f"\n```\n{output_answer}\n```\n")
         
         output_diff_result_file = f"./outputs/{self.s_id}/{self.hw_name}_{prob_name}_case_{case_num}_{self.s_id}_output_diff.txt"
         write_str += f"\n### problem-{prob_name}-case-{case_num} output diff result\n"
@@ -171,5 +185,3 @@ class ReportPrint:
         self.summary_f.write(write_str_summary)
         self.submit_compile_f.write(write_str_submit_compile)
         self.output_diff_f.write(write_str_output_diff)
-
-    

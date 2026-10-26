@@ -5,7 +5,8 @@ import re
 import shutil
 import multiprocessing
 
-from functions import has_dir, find_function, is_file_empty, find_member_functions, find_line
+from functions import (has_dir, find_function, is_file_empty, find_member_functions,
+                       find_line, get_answer_files, matches_allowed_destructor_orders)
 from report_print import ReportPrint
 
 
@@ -331,8 +332,11 @@ class AutoGradeStudent:
                 
                 ret_log += f"\t\t{self.s_id} : case {j+1} "
 
-                grading_case_output_file = f"./grading_cases/{self.hw_name}_{prob_name}_case_{j+1}_answer.txt"
-                # grading_case_output_file = f"./grading_cases/{self.hw_name}_{prob_name}_case_{j+1}_output.txt"
+                grading_case_output_files = get_answer_files(self.hw_name, prob_name, j+1)
+                if not grading_case_output_files:
+                    raise FileNotFoundError(
+                        f"No answer file found for {self.hw_name}-{prob_name}-case-{j+1}"
+                    )
                 output_file = f"./outputs/{self.s_id}/{self.hw_name}_{prob_name}_case_{j+1}_{self.s_id}"
 
                 # compile combined source code
@@ -353,10 +357,31 @@ class AutoGradeStudent:
                 subprocess_result = subprocess.run(run_output_command, capture_output=True, text=True)
                 with open(f"{output_file}_output.txt", 'w') as f: f.write(subprocess_result.stdout)
                 
-                # make diff file between output result and grading case answer
-                diff_command = ['diff', '-uZB', '--strip-trailing-cr', grading_case_output_file, f"{output_file}_output.txt"]
-                subprocess_result = subprocess.run(diff_command, capture_output=True, text=True)
-                with open(f"{output_file}_output_diff.txt", 'w') as f: f.write(subprocess_result.stdout)
+                # Pass when the output matches any accepted answer. If none match,
+                # keep the primary answer's diff for the grading report.
+                primary_diff = ""
+                matched = False
+                for answer_index, grading_case_output_file in enumerate(grading_case_output_files):
+                    diff_command = ['diff', '-uZB', '--strip-trailing-cr',
+                                    grading_case_output_file, f"{output_file}_output.txt"]
+                    subprocess_result = subprocess.run(diff_command, capture_output=True, text=True)
+                    if answer_index == 0:
+                        primary_diff = subprocess_result.stdout
+                    if subprocess_result.returncode == 0:
+                        matched = True
+                        break
+
+                flexible_destructor_marker = (
+                    f"./grading_cases/{self.hw_name}_{prob_name}_case_{j+1}"
+                    "_allow_all_destructor_orders"
+                )
+                if (not matched and os.path.isfile(flexible_destructor_marker)
+                        and matches_allowed_destructor_orders(
+                            grading_case_output_files[0], f"{output_file}_output.txt")):
+                    matched = True
+
+                with open(f"{output_file}_output_diff.txt", 'w') as f:
+                    f.write("" if matched else primary_diff)
 
         if is_print: print(f"\r>>>> Done               ")
 
@@ -441,5 +466,3 @@ class AutoGradeStudent:
         subprocess.run(run_output_command)
 
         return True
-        
-    

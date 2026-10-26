@@ -1,5 +1,66 @@
 import os
 import re
+import glob
+import itertools
+
+
+def get_answer_files(hw_name, prob_name, case_num):
+    """Return the primary and numbered alternative answers for a grading case."""
+    answer_prefix = f"{hw_name}_{prob_name}_case_{case_num}_answer"
+    answer_pattern = re.compile(rf"^{re.escape(answer_prefix)}(?:_(\d+))?\.txt$")
+    answer_files = []
+
+    for path in glob.glob(f"./grading_cases/{answer_prefix}*.txt"):
+        match = answer_pattern.fullmatch(os.path.basename(path))
+        if match:
+            # The unnumbered answer is primary; numbered alternatives follow.
+            order = 0 if match.group(1) is None else int(match.group(1))
+            answer_files.append((order, path))
+
+    return [path for _, path in sorted(answer_files)]
+
+
+def matches_allowed_destructor_orders(answer_file, output_file):
+    """Match any permutation of OP, Tables, and CoffeeShop destructor groups.
+
+    This is enabled per case by an `_allow_all_destructor_orders` marker file.
+    Lines inside the Tables group retain their required reverse-array order.
+    """
+    marker = "===== Part 6: Destructor ====="
+
+    def normalized_lines(path):
+        with open(path, "r", errors="replace") as f:
+            return [line.rstrip(" \t\r\n") for line in f if line.strip()]
+
+    answer_lines = normalized_lines(answer_file)
+    output_lines = normalized_lines(output_file)
+    if marker not in answer_lines or marker not in output_lines:
+        return False
+
+    answer_marker = answer_lines.index(marker)
+    output_marker = output_lines.index(marker)
+    if answer_lines[:answer_marker + 1] != output_lines[:output_marker + 1]:
+        return False
+
+    destructor_lines = answer_lines[answer_marker + 1:]
+    order_processing = [line for line in destructor_lines
+                        if line.startswith("[Destructor] OrderProcessing ")]
+    tables = [line for line in destructor_lines
+              if line.startswith("[Destructor] Table ")]
+    coffee_shop = [line for line in destructor_lines
+                   if line.startswith("[Destructor] CoffeeShop ")]
+
+    if len(order_processing) != 1 or not tables or len(coffee_shop) != 1:
+        return False
+    if len(order_processing) + len(tables) + len(coffee_shop) != len(destructor_lines):
+        return False
+
+    groups = (order_processing, tables, coffee_shop)
+    accepted_suffixes = {
+        tuple(line for group in permutation for line in group)
+        for permutation in itertools.permutations(groups)
+    }
+    return tuple(output_lines[output_marker + 1:]) in accepted_suffixes
 
 def has_dir(path):
     with os.scandir(path) as entries:
